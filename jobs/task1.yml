@@ -1,0 +1,145 @@
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: consul
+  labels:
+    name: consul
+spec:
+  containers:
+  - name: consul
+    image: consul:latest
+    ports:
+    - containerPort: 8500
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: consul
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 8500
+  selector:
+    name: consul
+
+---
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: task1
+  labels:
+    name: task1
+spec:
+  schedule: "*/1 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            name: task1
+        spec:
+          containers:
+            - command:
+                - sh
+                - /scripts/task1.sh
+              image: 'everpeace/curl-jq'
+              name: script
+              volumeMounts:
+                - name: task1vol
+                  mountPath: /scripts/task1.sh
+                  subPath: task1 
+                  readOnly: false
+          restartPolicy: Never
+          volumes:
+            - name: task1vol
+              configMap:
+                name: jobs
+                defaultMode: 0777
+
+
+  # replicas: 1
+  # strategy:
+  #   type: RollingUpdate
+  #   rollingUpdate:
+  #     maxUnavailable: 0
+  #     maxSurge: 1
+  # template:
+  #   metadata:
+  #     labels:
+  #       name: task1
+  #   spec: 
+  #     terminationGracePeriodSeconds: 1
+  #     containers:
+  #       - command:
+  #           - sh
+  #           - /scripts/task1.sh
+  #         image: 'everpeace/curl-jq'
+  #         name: script
+  #         volumeMounts:
+  #           - name: task1vol
+  #             mountPath: /scripts/task1.sh
+  #             subPath: task1 
+  #             readOnly: false
+  #     volumes:
+  #       - name: task1vol
+  #         configMap:
+  #           name: jobs
+  #           defaultMode: 0777
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: default
+  name: deployments-and-deployements-scale
+rules:
+- apiGroups: ["*"]
+  resources: ["*"]
+  verbs: ["*"]
+
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: deployments-and-deployements-scale-rb
+subjects:
+- kind: ServiceAccount
+  name: default
+  namespace: default
+roleRef:
+  kind: Role
+  name: deployments-and-deployements-scale
+  apiGroup: ""
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jobs
+data:
+  task1: |
+    # Point to the internal API server hostname
+    APISERVER=https://kubernetes.default.svc
+
+    # Path to ServiceAccount token
+    SERVICEACCOUNT=/var/run/secrets/kubernetes.io/serviceaccount
+
+    # Read this Pod's namespace
+    NAMESPACE=$(cat ${SERVICEACCOUNT}/namespace)
+
+    # Read the ServiceAccount bearer token
+    TOKEN=$(cat ${SERVICEACCOUNT}/token)
+
+    # Reference the internal certificate authority (CA)
+    CACERT=${SERVICEACCOUNT}/ca.crt
+
+    # Explore the API with TOKEN
+    OUT=$(curl --silent --cacert ${CACERT} --header "Authorization: Bearer ${TOKEN}" -X GET ${APISERVER}/apis/apps/v1/namespaces/${NAMESPACE}/deployments/nodeapp/scale?pretty=true | jq .spec.replicas)
+    curl --silent --request PUT http://consul/v1/kv/out --data "$OUT" > /dev/null
+    curl --fail --silent --show-error "http://consul/v1/kv/out?raw"
+    echo ""

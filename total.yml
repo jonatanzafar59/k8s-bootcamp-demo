@@ -1,0 +1,87 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: hello
+  labels:
+    app: hello
+spec:
+  containers:
+  - name: web
+    image: nginx:latest
+    ports:
+    - containerPort: 80
+    volumeMounts:
+      - name: nginx-file
+        mountPath: /etc/nginx/nginx.conf
+        subPath: nginx.conf
+  volumes:
+  - name: nginx-file
+    configMap:
+      name: conf
+  
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nodeapp
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+  selector:
+    app: nodeapp
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello-front
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+  selector:
+    app: hello
+
+---
+   
+# Simple deployment used to deploy and manage the app in nigelpoulton/getting-started-k8s:1.0
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nodeapp
+  # labels:
+  #   app: nodeapp
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: nodeapp
+  minReadySeconds: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: nodeapp
+    spec: 
+      terminationGracePeriodSeconds: 1
+      containers:
+      - name: fuckoff
+        image: nginxdemos/hello:0.2
+
+# ---
+# apiVersion: v1
+# kind: Deployment
+# metadata:
+#   name: nodeapp
+#   labels:
+#     app: nodeapp
+# spec:
+#   containers:
+#   - name: nodeapp
+#     image: nginxdemos/hello:latest
+
