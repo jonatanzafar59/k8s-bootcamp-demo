@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: task2
+  labels:
+    name: task2
+spec:
+  # schedule: "*/1 * * * *"
+  replicas: 1
+  selector:
+    matchLabels:
+      name: task2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        name: task2
+    spec: 
+      terminationGracePeriodSeconds: 1
+      containers:
+        - command:
+            - sh
+            - /scripts/task2.sh
+          image: 'everpeace/curl-jq'
+          name: script
+          volumeMounts:
+            - name: task2vol
+              mountPath: /scripts/task2.sh
+              subPath: task2 
+              readOnly: false
+      volumes:
+        - name: task2vol
+          configMap:
+            name: jobs2
+            defaultMode: 0777
+
+
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jobs2
+data:
+  task2: |
+    IN=$(curl --fail --silent --show-error "http://consul/v1/kv/out?raw")
+    REQUESTS="$((3 * $IN))"
+    echo $REQUESTS
+    for i in $(seq 1 $REQUESTS);
+    do
+        echo "$i"
+    done
