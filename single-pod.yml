@@ -27,7 +27,7 @@ metadata:
   labels:
     app: nodeapp
 spec:
-  replicas: 5
+  replicas: 1
   selector:
     matchLabels:
       app: nodeapp
@@ -60,17 +60,17 @@ spec:
 #   - name: nodeapp
 #     image: nginxdemos/hello:latest
 
-# ---
-# apiVersion: v1
-# kind: Service
-# metadata:
-#   name: nodeapp
-# spec:
-#   type: ClusterIP
-#   ports:
-#   - port: 80
-#   selector:
-#     app: nodeapp
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nodeapp
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+  selector:
+    app: nodeapp
 
 # ---
 # apiVersion: v1
@@ -83,3 +83,24 @@ spec:
 #   - port: 80
 #   selector:
 #     app: example
+
+--- 
+# https://kubernetes.io/docs/concepts/services-networking/ingress/#the-ingress-resource
+
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: nodeapp-rule
+#   annotations:
+#     kubernetes.io/ingress.class: nginx
+# spec:
+#   rules:
+#   - http:
+#       paths:
+#       - path: /jonathan
+#         pathType: Prefix
+#         backend:
+#           service:
+#             name: nodeapp
+#             port:
+#               number: 80

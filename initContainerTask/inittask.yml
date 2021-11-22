@@ -1,0 +1,121 @@
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: consul
+  labels:
+    name: consul
+spec:
+  containers:
+  - name: consul
+    image: consul:latest
+    ports:
+    - containerPort: 8500
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: consul
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 8500
+  selector:
+    name: consul
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: example
+data:
+  initScript: |
+    CONSUL=consul
+    INDEX=${HOSTNAME##*-}
+    if [ $INDEX -gt 0 ]; then
+        PREVIOUS_INDEX="$(($INDEX - 1))"
+        NAME="${HOSTNAME%-*}"
+        until [ "$(curl --silent  http://$CONSUL/v1/kv/last?raw)" = $PREVIOUS_INDEX ]; do echo waiting for previous "$NAME-$PREVIOUS_INDEX" pod; sleep 2; done
+        echo "Found index $PREVIOUS_INDEX"
+    fi
+    echo "Writing current INDEX $INDEX to 'http://$CONSUL/v1/kv/last'"
+    curl --silent --request PUT http://$CONSUL/v1/kv/last --data "$INDEX" > /dev/null
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: test
+  labels:
+    app: myapp
+spec:
+  serviceName: "myapp"
+  replicas: 5
+  selector:
+    matchLabels:
+      app: test
+  template:
+    metadata:
+      labels:
+        app: test
+    spec:
+      containers:
+      - name: myapp-container
+        image: busybox:1.28
+        command: ['sh', '-c', 'echo The app is running! && sleep 3600']
+      initContainers:
+      - name: init
+        image: 'everpeace/curl-jq'
+        command:
+          - sh
+          - /tmp/initScript.sh
+        volumeMounts:
+          - name: vol1
+            mountPath: /tmp/initScript.sh
+            subPath: initScript 
+            readOnly: false
+      volumes:
+        - name: vol1
+          configMap:
+            name: example
+            defaultMode: 0777
+
+
+# ---
+
+# apiVersion: apps/v1
+# kind: StatefulSet
+# metadata:
+#   name: web
+# spec:
+#   serviceName: "nginx"
+#   replicas: 2
+#   selector:
+#     matchLabels:
+#       app: nginx
+#   template:
+#     metadata:
+#       labels:
+#         app: nginx
+#     spec:
+#       containers:
+#       - name: nginx
+#         image: k8s.gcr.io/nginx-slim:0.8
+#         ports:
+#         - containerPort: 80
+#           name: web
+#         volumeMounts:
+#         - name: www
+#           mountPath: /usr/share/nginx/html
+#   volumeClaimTemplates:
+#   - metadata:
+#       name: www
+#     spec:
+#       accessModes: [ "ReadWriteOnce" ]
+#       resources:
+#         requests:
+#           storage: 1Gi
